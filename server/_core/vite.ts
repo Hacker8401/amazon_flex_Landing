@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import path from "node:path";
 import express from "express";
+import fs from "node:fs";
 
 export async function setupVite(app: Express, server: Server) {
   const { createServer } = await import("vite");
@@ -18,9 +19,21 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "../../dist/public");
+  // In production, the built file is at dist/index.js
+  // The static files are at dist/public
+  const distPath = path.resolve(import.meta.dirname, "public");
+  
+  if (!fs.existsSync(distPath)) {
+    console.error(`[Static] Directory not found: ${distPath}`);
+  }
+
   app.use(express.static(distPath));
   app.get("*", (_req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
+    const indexPath = path.join(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send("Not Found");
+    }
   });
 }
