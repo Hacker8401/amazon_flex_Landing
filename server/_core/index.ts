@@ -10,7 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const server = net.createServer();
-    server.listen(port, () => {
+    server.listen(port, "0.0.0.0", () => {
       server.close(() => resolve(true));
     });
     server.on("error", () => resolve(false));
@@ -18,6 +18,11 @@ function isPortAvailable(port: number): Promise<boolean> {
 }
 
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
+  // In production, we should respect the PORT environment variable strictly
+  if (process.env.NODE_ENV === "production") {
+    return startPort;
+  }
+
   for (let port = startPort; port < startPort + 20; port++) {
     if (await isPortAvailable(port)) {
       return port;
@@ -49,15 +54,11 @@ async function startServer() {
     serveStatic(app);
   }
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port = parseInt(process.env.PORT || "3000");
+  const finalPort = await findAvailablePort(port);
 
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
-  }
-
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.listen(finalPort, "0.0.0.0", () => {
+    console.log(`Server running on port ${finalPort}`);
   });
 }
 
