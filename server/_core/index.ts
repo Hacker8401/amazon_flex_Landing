@@ -6,6 +6,9 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { getDb } from "../db";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import path from "node:path";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -18,7 +21,6 @@ function isPortAvailable(port: number): Promise<boolean> {
 }
 
 async function findAvailablePort(startPort: number = 3000): Promise<number> {
-  // In production, we should respect the PORT environment variable strictly
   if (process.env.NODE_ENV === "production") {
     return startPort;
   }
@@ -31,9 +33,39 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+async function runMigrations() {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Migration skipped: DATABASE_URL not provided");
+    return;
+  }
+
+  try {
+    console.log("[Database] Running migrations...");
+    // The migrations are in drizzle/migrations relative to the project root
+    // In production, they are in dist/drizzle/migrations
+    const migrationsPath = process.env.NODE_ENV === "production" 
+      ? path.resolve(import.meta.dirname, "drizzle/migrations")
+      : path.resolve(import.meta.dirname, "../../drizzle/migrations");
+      
+    await migrate(db, { migrationsFolder: migrationsPath });
+    console.log("[Database] Migrations completed successfully");
+  } catch (error) {
+    console.error("[Database] Migration failed:", error);
+    // Don't crash the server on migration failure in dev, but maybe in prod?
+    if (process.env.NODE_ENV === "production") {
+      // throw error; // Optional: crash if migrations fail in prod
+    }
+  }
+}
+
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  
+  // Run migrations on startup
+  await runMigrations();
+
   // Configure body parser
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -44,6 +76,9 @@ async function startServer() {
     createExpressMiddleware({
       router: appRouter,
       createContext,
+      onError: ({ path, error }) => {
+        console.error(`[tRPC Error] ${path}:`, error);
+      }
     })
   );
   
