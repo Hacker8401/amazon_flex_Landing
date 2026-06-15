@@ -34,16 +34,14 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function runMigrations() {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Migration skipped: DATABASE_URL not provided");
-    return;
-  }
-
   try {
+    const db = await getDb();
+    if (!db) {
+      console.warn("[Database] Migration skipped: DATABASE_URL not provided");
+      return;
+    }
+
     console.log("[Database] Running migrations...");
-    // The migrations are in drizzle/migrations relative to the project root
-    // In production, they are in dist/drizzle/migrations
     const migrationsPath = process.env.NODE_ENV === "production" 
       ? path.resolve(import.meta.dirname, "drizzle/migrations")
       : path.resolve(import.meta.dirname, "../../drizzle/migrations");
@@ -52,10 +50,6 @@ async function runMigrations() {
     console.log("[Database] Migrations completed successfully");
   } catch (error) {
     console.error("[Database] Migration failed:", error);
-    // Don't crash the server on migration failure in dev, but maybe in prod?
-    if (process.env.NODE_ENV === "production") {
-      // throw error; // Optional: crash if migrations fail in prod
-    }
   }
 }
 
@@ -63,9 +57,6 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   
-  // Run migrations on startup
-  await runMigrations();
-
   // Configure body parser
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -94,6 +85,9 @@ async function startServer() {
 
   server.listen(finalPort, "0.0.0.0", () => {
     console.log(`Server running on port ${finalPort}`);
+    
+    // Run migrations in background after server starts to avoid blocking
+    runMigrations().catch(console.error);
   });
 }
 

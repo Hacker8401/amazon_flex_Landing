@@ -10,10 +10,16 @@ let _client: ReturnType<typeof postgres> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _client = postgres(process.env.DATABASE_URL);
+      console.log("[Database] Connecting to database...");
+      _client = postgres(process.env.DATABASE_URL, {
+        max: 10,
+        idle_timeout: 20,
+        connect_timeout: 10,
+      });
       _db = drizzle(_client);
+      console.log("[Database] Connection initialized");
     } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
+      console.error("[Database] Failed to initialize connection:", error);
       _db = null;
       _client = null;
     }
@@ -24,8 +30,7 @@ export async function getDb() {
 export async function createLead(lead: InsertLead): Promise<Lead | null> {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot create lead: database not available");
-    return null;
+    throw new Error("Database not available");
   }
 
   try {
@@ -40,7 +45,6 @@ export async function createLead(lead: InsertLead): Promise<Lead | null> {
 export async function getAllLeads(): Promise<Lead[]> {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get leads: database not available");
     return [];
   }
 
